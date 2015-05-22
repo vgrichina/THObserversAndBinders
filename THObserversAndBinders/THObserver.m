@@ -11,9 +11,17 @@
 #import <objc/message.h>
 
 @implementation THObserver {
-    __weak id _observedObject;
     NSString *_keyPath;
     dispatch_block_t _block;
+    
+    // The reason this is __unsafe_unretained instead of __weak is so that, if
+    // -stopObserving: is called _during_ _observedObject's deallocation, this
+    // ivar won't be zeroed out yet, and so we'll still be able to use it to
+    // degister for notifications.
+    // This does mean that it won't be zeroed out automatically, but we'd be in
+    // a dangerous state if that happened anyway (we'd be still registered
+    // for KVO on a deallocated object).
+    __unsafe_unretained id _observedObject;
 }
 
 typedef enum THObserverBlockArgumentsKind {
@@ -165,7 +173,7 @@ static NSUInteger SelectorArgumentCount(SEL selector)
             block = [^{
                 id msgTarget = wTarget;
                 if(msgTarget) {
-                    objc_msgSend(msgTarget, action);
+                    ((void(*)(id, SEL))objc_msgSend)(msgTarget, action);
                 }
             } copy];
             blockArgumentsKind = THObserverBlockArgumentsNone;
@@ -175,7 +183,7 @@ static NSUInteger SelectorArgumentCount(SEL selector)
             block = [^{
                 id msgTarget = wTarget;
                 if(msgTarget) {
-                    objc_msgSend(msgTarget, action, wObject);
+                    ((void(*)(id, SEL, id))objc_msgSend)(msgTarget, action, wObject);
                 }
             } copy];
             blockArgumentsKind = THObserverBlockArgumentsNone;
@@ -186,7 +194,7 @@ static NSUInteger SelectorArgumentCount(SEL selector)
             block = [^{
                 id msgTarget = wTarget;
                 if(msgTarget) {
-                    objc_msgSend(msgTarget, action, wObject, myKeyPath);
+                    ((void(*)(id, SEL, id, NSString *))objc_msgSend)(msgTarget, action, wObject, myKeyPath);
                 }
             } copy];
             blockArgumentsKind = THObserverBlockArgumentsNone;
@@ -197,7 +205,7 @@ static NSUInteger SelectorArgumentCount(SEL selector)
             block = [(dispatch_block_t)(^(NSDictionary *change) {
                 id msgTarget = wTarget;
                 if(msgTarget) {
-                    objc_msgSend(msgTarget, action, wObject, myKeyPath, change);
+                    ((void(*)(id, SEL, id, NSString *, NSDictionary *))objc_msgSend)(msgTarget, action, wObject, myKeyPath, change);
                 }
             }) copy];
             blockArgumentsKind = THObserverBlockArgumentsChangeDictionary;
@@ -209,7 +217,7 @@ static NSUInteger SelectorArgumentCount(SEL selector)
             block = [(dispatch_block_t)(^(id oldValue, id newValue) {
                 id msgTarget = wTarget;
                 if(msgTarget) {
-                    objc_msgSend(msgTarget, action, wObject, myKeyPath, oldValue, newValue);
+                    ((void(*)(id, SEL, id, NSString *, id, id))objc_msgSend)(msgTarget, action, wObject, myKeyPath, oldValue, newValue);
                 }
             }) copy];
             blockArgumentsKind = THObserverBlockArgumentsOldAndNew;
@@ -262,7 +270,7 @@ static NSUInteger SelectorArgumentCount(SEL selector)
             block = [^(NSDictionary *change) {
                 id msgTarget = wTarget;
                 if(msgTarget) {
-                    objc_msgSend(msgTarget, valueAction, change[NSKeyValueChangeNewKey]);
+                    ((void(*)(id, SEL, id))objc_msgSend)(msgTarget, valueAction, change[NSKeyValueChangeNewKey]);
                 }
             } copy];
         }
@@ -272,7 +280,19 @@ static NSUInteger SelectorArgumentCount(SEL selector)
             block = [^(NSDictionary *change) {
                 id msgTarget = wTarget;
                 if(msgTarget) {
-                    objc_msgSend(msgTarget, valueAction, change[NSKeyValueChangeOldKey], change[NSKeyValueChangeNewKey]);
+                    ((void(*)(id, SEL, id, id))objc_msgSend)(msgTarget, valueAction, change[NSKeyValueChangeOldKey], change[NSKeyValueChangeNewKey]);
+                }
+            } copy];
+        }
+            break;
+        case 3: {
+            __weak id wObject = object;
+
+            options |= NSKeyValueObservingOptionOld | NSKeyValueObservingOptionNew;
+            block = [^(NSDictionary *change) {
+                id msgTarget = wTarget;
+                if(msgTarget) {
+                    ((void(*)(id, SEL, id, id, id))objc_msgSend)(msgTarget, valueAction, wObject, change[NSKeyValueChangeOldKey], change[NSKeyValueChangeNewKey]);
                 }
             } copy];
         }
